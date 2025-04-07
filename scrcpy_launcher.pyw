@@ -2,8 +2,8 @@ import subprocess
 import tkinter as tk
 from tkinter import simpledialog, filedialog, messagebox
 import os
-import signal
 import configparser
+import sys
 
 # File konfigurasi untuk menyimpan path scrcpy
 CONFIG_FILE = "config.ini"
@@ -26,12 +26,23 @@ def save_scrcpy_path(path):
         config.write(configfile)
 
 
+# Fungsi untuk mendapatkan path scrcpy yang benar, menyesuaikan dengan file exe
+def get_scrcpy_path():
+    if getattr(sys, "frozen", False):  # Jika dijalankan dari .exe
+        application_path = os.path.dirname(sys.executable)
+    else:  # Jika dijalankan sebagai script
+        application_path = os.path.dirname(__file__)
+
+    return os.path.join(application_path, "scrcpy.exe")
+
+
 # Path ke scrcpy.exe dan adb.exe
-SCRCPY_PATH = load_scrcpy_path()
+SCRCPY_PATH = load_scrcpy_path()  # Muat path dari file konfigurasi
 ADB_PATH = "adb"  # diasumsikan sudah ada di PATH environment
 scrcpy_process = None  # untuk nyimpen proses scrcpy
 
 
+# Fungsi untuk mengatur path scrcpy melalui UI
 def set_scrcpy_path():
     global SCRCPY_PATH
     scrcpy_path = filedialog.askopenfilename(
@@ -40,15 +51,31 @@ def set_scrcpy_path():
     if scrcpy_path:
         SCRCPY_PATH = scrcpy_path
         save_scrcpy_path(scrcpy_path)
+        update_scrcpy_path_display()
         messagebox.showinfo("Success", f"Path scrcpy telah diset ke {scrcpy_path}")
 
 
+# Fungsi untuk mengupdate label yang menampilkan path scrcpy
+def update_scrcpy_path_display():
+    if SCRCPY_PATH:
+        scrcpy_path_label.config(text=f"Path scrcpy.exe: {SCRCPY_PATH}")
+    else:
+        scrcpy_path_label.config(text="Path scrcpy.exe belum diset.")
+
+
+# Fungsi untuk menjalankan scrcpy
 def run_scrcpy(args=None):
     global scrcpy_process
     if args is None:
         args = []
     if SCRCPY_PATH:
-        scrcpy_process = subprocess.Popen([SCRCPY_PATH] + args)
+        if sys.platform == "win32":  # Pastikan hanya untuk Windows
+            # Gunakan CREATE_NO_WINDOW untuk menjalankan scrcpy tanpa terminal
+            scrcpy_process = subprocess.Popen(
+                [SCRCPY_PATH] + args, creationflags=subprocess.CREATE_NO_WINDOW
+            )
+        else:
+            scrcpy_process = subprocess.Popen([SCRCPY_PATH] + args)
     else:
         messagebox.showerror(
             "Error", "Path scrcpy tidak ditemukan. Silakan set path terlebih dahulu."
@@ -60,7 +87,6 @@ def mirror_usb():
 
 
 def mirror_wifi():
-    # Cek apakah device sudah connect
     result = subprocess.check_output([ADB_PATH, "devices"], encoding="utf-8")
     if "device" in result.strip().split("\n")[-1]:
         run_scrcpy()
@@ -114,6 +140,17 @@ if SCRCPY_PATH is None:
     messagebox.showinfo("First Time Setup", "Silakan pilih path scrcpy.exe Anda.")
     set_scrcpy_path()
 
+# Tampilkan path scrcpy yang saat ini digunakan
+scrcpy_path_label = tk.Label(
+    root, text="Path scrcpy.exe belum diset.", font=("Arial", 10)
+)
+scrcpy_path_label.pack(pady=10)
+
+# Tombol untuk mengubah path scrcpy
+tk.Button(root, text="🔧 Ubah Path scrcpy", width=30, command=set_scrcpy_path).pack(
+    pady=5
+)
+
 tk.Button(root, text="🖥️ Mirror via USB", width=30, command=mirror_usb).pack(pady=5)
 tk.Button(
     root, text="📶 Mirror via Wi-Fi (auto detect)", width=30, command=mirror_wifi
@@ -124,9 +161,9 @@ tk.Button(root, text="📌 Always On Top Mirror", width=30, command=always_on_to
     pady=5
 )
 tk.Button(root, text="⛔ Stop Mirroring", width=30, command=stop_mirror).pack(pady=5)
-tk.Button(root, text="🔧 Ubah Path scrcpy", width=30, command=set_scrcpy_path).pack(
-    pady=5
-)
 tk.Button(root, text="❌ Keluar", width=30, command=root.destroy).pack(pady=20)
+
+# Update tampilan path scrcpy setelah aplikasi dimulai
+update_scrcpy_path_display()
 
 root.mainloop()
